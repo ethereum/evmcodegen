@@ -61,7 +61,7 @@ class Rnd:
     def opcode():
         return Rnd.uni_integer(0x00, 0xff)
 
-valuemap ={
+VALUEMAP ={
     evmdasm.argtypes.Address: lambda: Rnd.byte_sequence(20),
     evmdasm.argtypes.Word: lambda: Rnd.byte_sequence(32),
     evmdasm.argtypes.Timestamp: lambda: Rnd.byte_sequence(4),
@@ -82,13 +82,14 @@ valuemap ={
 
 class CodeGen(_BaseCodeGen):
 
-    def __init__(self, generator, mutator=None):
+    def __init__(self, generator, mutator=None, valuemap=None):
         super().__init__()
         self._generator = generator
         self._mutator = mutator
+        self._valuemap = valuemap or VALUEMAP
 
     @staticmethod
-    def build_stack_layout(instructions):
+    def build_stack_layout(instructions, valuemap):
         for instr in instructions:
             if instr.name.startswith("PUSH"):
                 Rnd.randomize_operand(instr)   # push random stuff
@@ -143,11 +144,11 @@ class CodeGen(_BaseCodeGen):
 
         return disassembly.assemble()
 
-    def generate(self, length=50):
+    def generate(self, length=None):
         instructions = [evmdasm.registry.create_instruction(opcode=opcode) for opcode in
                         self._generator.generate(length)]
 
-        instructions = CodeGen.build_stack_layout(instructions)
+        instructions = CodeGen.build_stack_layout(instructions, valuemap=self._valuemap)
 
         serialized = ''.join(e.serialize() for e in instructions)
         serialized = CodeGen.fix_code_layout(serialized)
