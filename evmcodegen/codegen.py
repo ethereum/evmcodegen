@@ -238,6 +238,7 @@ def main():
     parser.add_option("-l", "--length", default=-1, type=int,
                       help="instructions per generated code")
     parser.add_option("-s", "--stats", default=True, action="store_true", help="show statistics")
+    parser.add_option("-b", "--balance", default=False, action="store_true", help="balance the stack")
     # parse args
     (options, args) = parser.parse_args()
 
@@ -255,8 +256,9 @@ def main():
         evmcode = CodeGen()\
             .generate(generator=rnd_codegen, length=options.length, min_gas=options.min_gas)\
             .fix_stack_arguments(valuemap=VALUEMAP)\
-            .fix_jumps()\
-            .fix_stack_balance()
+            .fix_jumps()
+        if options.balance:
+            evmcode.fix_stack_balance()
         print("0x%s" % evmcode.assemble().as_hexstring)
         if options.disassemble:
             print(evmcode.reassemble().instructions.as_string)
