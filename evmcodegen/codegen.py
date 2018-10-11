@@ -80,19 +80,35 @@ VALUEMAP ={
 }
 
 
-class CodeGen(_BaseCodeGen):
+class CodeGen(object):
+    """
+    CodeGen().generate(length,min_gas).add_stack_args(valuemap)
+    """
 
-    def __init__(self, generator, mutator=None, valuemap=None):
-        super().__init__()
-        self._generator = generator
-        self._mutator = mutator
-        self._valuemap = valuemap or VALUEMAP
+    def __init__(self, instructions=None):
+        self.instructions = instructions
+
+    @property
+    def instructions(self):
+        return self._instructions
+
+    @instructions.setter
+    def instructions(self, instructions):
+        if isinstance(instructions, evmdasm.EvmInstructions):
+            self._instructions = instructions
+        elif isinstance(instructions, list):
+            self._instructions = evmdasm.EvmInstructions(instructions=instructions)
+        elif instructions is None:
+            self._instructions = evmdasm.EvmInstructions(instructions=[])
+        else:
+            raise TypeError("invalid type for instructions. evmdasm.EvmInstructions or [] expected")
+        return self
 
     @staticmethod
     def build_stack_layout(instructions, valuemap):
         for instr in instructions:
             if instr.name.startswith("PUSH"):
-                Rnd.randomize_operand(instr)   # push random stuff
+                Rnd.randomize_operand(instr)  # push random stuff
             elif instr.name.startswith("SWAP"):
                 for _ in range(instr.pops):
                     yield Rnd.randomize_operand(evmdasm.registry.create_instruction("PUSH%s" % Rnd.uni_integer(1, 32)))
@@ -117,13 +133,38 @@ class CodeGen(_BaseCodeGen):
         instr.operand_bytes = data
         return instr
 
-    @staticmethod
-    def fix_code_layout(bytecode):
+    def generate(self, generator, length=None, min_gas=0):
+        instructions = []
+        # generate instruction
+        while min_gas >= 0:
+            instructions += [evmdasm.registry.create_instruction(opcode=opcode) for opcode in generator.generate(length)]
+            min_gas -= evmdasm.EvmInstructions(instructions).get_gas_required()
+
+        self.instructions = instructions  # add or replace?
+        return self
+
+    def fix_stack_arguments(self, valuemap):
+        self.instructions = list(CodeGen.build_stack_layout(instructions=self.instructions, valuemap=valuemap))
+        return self
+
+    def reassemble(self):
+        # serialize and disassemble to have addresses and stuff fixed
+        self.instructions = self.instructions.assemble().disassemble()
+        return self
+
+    def assemble(self):
+        assembled = self.instructions.assemble()
+        return assembled
+
+    def fix_jumps(self):
         # fix JUMP/JUMPI landing on JUMPDEST
         # reuse existing jumpdestß
+        # serialize f
+
+        self.reassemble()  # can only work on disassembled code
 
         # strategy: add random jumpdests and make jump/jumpis point to jumpdest
-        disassembly = evmdasm.EvmBytecode(bytecode).disassemble()
+        disassembly = self.instructions
         jumps = [j for j in disassembly if j.name in ("JUMP","JUMPI")]
         jumpdests = []
         # add n_jumps JUMPDESTS and fix the jumps to point to the correct address
@@ -142,26 +183,29 @@ class CodeGen(_BaseCodeGen):
             # only need to insert the PUSH(jumpdest) as the condition/flag was already put onto the stack by fix_stack_layout
             disassembly.insert(jmp_index, CodeGen.create_push_for_data(jumpdest.address))
 
-        return disassembly.assemble()
+        self.instructions = disassembly
+        return self
 
-    def generate(self, length=None):
-        instructions = [evmdasm.registry.create_instruction(opcode=opcode) for opcode in
-                        self._generator.generate(length)]
+    def fix_stack_balance(self, balance=0):
+        depth = self.instructions.get_stack_balance() + balance
 
-        instructions = CodeGen.build_stack_layout(instructions, valuemap=self._valuemap)
+        # append pushes or pops to balance the stack
+        self.instructions += [evmdasm.registry.create_instruction("PUSH1" if depth <= 0 else "POP") for _ in range(depth)]
+        return self
 
-        serialized = ''.join(e.serialize() for e in instructions)
-        serialized = CodeGen.fix_code_layout(serialized)
+    def mutate(self, mutator):
+        raise NotImplementedError("not yet implemented")
+        return self
 
-        return serialized
-
-    @staticmethod
-    def stats(evmbytecode):
-        print("========stats==========")
-        print("instructions: %s" % len(evmbytecode.disassemble()))
+    def stats(self):
+        self.reassemble()
+        out = []
+        out.append("========stats==========")
+        out.append("instructions: %s" % len(self.instructions))
+        out.append("gas (all instructions: %s" % self.instructions.get_gas_required())
         from collections import Counter
 
-        stats_instructions = Counter([instr.opcode for instr in evmbytecode.disassemble()])
+        stats_instructions = Counter([instr.opcode for instr in self.instructions])
         total = sum(stats_instructions.values())
         for opcode_byte, cnt in sorted(stats_instructions.items(), key=lambda a: a[1], reverse=True):
             try:
@@ -174,7 +218,8 @@ class CodeGen(_BaseCodeGen):
             else:
                 name = "UNKNOWN_%x" % opcode
 
-            print("%-20s | %-f%%" % (name, cnt / total * 100))
+            out.append("%-20s | %-f%%" % (name, cnt / total * 100))
+        return '\n'.join(out)
 
 
 def main():
@@ -188,29 +233,37 @@ def main():
 
     parser.add_option("-g", "--generator", default="GaussDistrCategory", help="select generator (default: DistrCategory)")
     parser.add_option("-d", "--disassemble", action="store_true", help="show disassembly")
-    parser.add_option("-c", "--count", default=1, type=int, help="number of codes to generate")
+    parser.add_option("-c", "--count", default=1, type=int, help="number of evmcodes to generate")
+    parser.add_option("-m", "--min-gas", default=0, type=int, help="generate instructions consuming at least this amount of gas")
+    parser.add_option("-l", "--length", default=-1, type=int,
+                      help="instructions per generated code")
     parser.add_option("-s", "--stats", default=True, action="store_true", help="show statistics")
     # parse args
     (options, args) = parser.parse_args()
 
-
-    if options.generator=="GaussDistrCategory":
+    if options.generator == "GaussDistrCategory":
         rnd_codegen = GaussDistrCodeGen(distribution=EVM_CATEGORY)
-    elif options.generator=="Rnn":
+    elif options.generator == "Rnn":
         rnd_codegen = RnnCodeGen()
         # rnd_codegen.temperature = 0.2
     else:
         parser.error("--missing generator--")
 
-    codegen = CodeGen(generator=rnd_codegen)
-    for nr, evmcode in enumerate(codegen):
-        print(evmcode)
+    options.length = options.length if options.length >= 0 else None
+
+    while options.count >0:
+        evmcode = CodeGen()\
+            .generate(generator=rnd_codegen, length=options.length, min_gas=options.min_gas)\
+            .fix_stack_arguments(valuemap=VALUEMAP)\
+            .fix_jumps()\
+            .fix_stack_balance()
+        print("0x%s" % evmcode.assemble().as_hexstring)
         if options.disassemble:
-            print(evmcode.disassemble().as_string)
+            print(evmcode.reassemble().instructions.as_string)
         if options.stats:
-            CodeGen.stats(evmcode)
-        if nr >= options.count:
-            break
+            print(CodeGen.stats(evmcode))
+        options.count -= 1
+
 
 if __name__=="__main__":
     main()
