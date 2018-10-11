@@ -2,6 +2,59 @@
 -- super secret project -- psst
 
 
+## library
+
+```python
+import evmdasm
+# import distribution and random codegen strategy
+from evmcodegen.distributions import EVM_CATEGORY
+from evmcodegen.generators.distribution import GaussDistrCodeGen
+
+# prepare random number generators for stack arg generator
+import evmdasm
+
+# Rnd is just a utility class providing random byte and number generators. see codegen.py
+VALUEMAP ={
+    evmdasm.argtypes.Address: lambda: Rnd.byte_sequence(20),
+    evmdasm.argtypes.Word: lambda: Rnd.byte_sequence(32),
+    evmdasm.argtypes.Timestamp: lambda: Rnd.byte_sequence(4),
+    evmdasm.argtypes.Data: lambda: Rnd.byte_sequence(Rnd.uni_integer(0, Rnd.opcode())),
+    evmdasm.argtypes.CallValue: lambda: Rnd.uni_integer(0,1024),
+    evmdasm.argtypes.Gas: lambda: Rnd.uni_integer(0,1024),
+    evmdasm.argtypes.Length: lambda: Rnd.small_memory_length_1024(),
+    evmdasm.argtypes.MemOffset: lambda: Rnd.small_memory_length_1024(),
+    evmdasm.argtypes.Index256: lambda: Rnd.uni_integer(1,256),
+    evmdasm.argtypes.Index64: lambda: Rnd.uni_integer(1,64),
+    evmdasm.argtypes.Index32: lambda: Rnd.length_32(),
+    evmdasm.argtypes.Byte: lambda: Rnd.byte_sequence(1),
+    evmdasm.argtypes.Bool: lambda: Rnd.byte_sequence(1),
+    evmdasm.argtypes.Value: lambda: Rnd.uni_integer(),
+    #evmdasm.argtypes.Label: lambda: 0xc0fefefe,  # this is handled by fix_code_layout (fix jumps)
+}
+
+# create random number generator
+rnd_codegen = GaussDistrCodeGen(distribution=EVM_CATEGORY)
+
+# generate code, fix stack arguments, make jumps land on jumpdests, fix stack balance
+evmcode = CodeGen()\
+            .generate(generator=rnd_codegen, length=None, min_gas=20)\
+            .fix_stack_arguments(valuemap=VALUEMAP)\
+            .fix_jumps().fix_stack_balance()
+
+# print evmcode as string
+print("0x%s" % evmcode.assemble().as_hexstring)
+
+# disassemble and print listing
+print(evmcode.reassemble().instructions.as_string)
+
+# print some stats
+print(CodeGen.stats(evmcode))
+```
+
+
+
+## cmdline
+
 `python -m evmcodegen [--disassemble] [--count 1] [--stats]`
 
 ```
