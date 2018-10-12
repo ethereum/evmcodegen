@@ -1,5 +1,8 @@
 # evmcodegen
--- super secret project -- psst
+
+Ever wanted to generate and manipulate ethereum evm bytecode? This is your chance.
+
+Use various strategies to generate Instructions, fix the stack layout, fix jump addresses, balance the stack and manipulate the code before serializing Instruction objects to bytecode.
 
 
 ## library

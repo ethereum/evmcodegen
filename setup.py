@@ -19,9 +19,9 @@ setup(
     author="tintinweb",
     author_email="tintinweb@oststrom.com",
     description=(
-        "--TBD--"),
+        "A synthetic evm bytecode generation library and cmdline utility to fuzz the ethereum stack machine"),
     license="GPLv2",
-    keywords=["evmdasm", "ethereum", "blockchain", "evm"],
+    keywords=["evmdasm", "ethereum", "blockchain", "evm", "code", "fuzzer", "fuzzing"],
     url="https://github.com/tintinweb/%s"%name,
     download_url="https://github.com/tintinweb/%s/tarball/v%s"%(name,version),
     #python setup.py register -r https://testpypi.python.org/pypi
