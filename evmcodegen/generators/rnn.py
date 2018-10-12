@@ -14,6 +14,7 @@ class RnnCodeGen(_BaseCodeGen):
 
     def __init__(self, weights_path=None, vocab_path=None, config_path=None):
         super().__init__()
+        self.type = _BaseCodeGen.TYPE_OPCODE_WITH_OPERAND  # generates opcodes with operands
 
         pkg_root = pkg_resources.resource_filename(__name__, os.path.join("..", "weights"))
 
@@ -40,5 +41,5 @@ class RnnCodeGen(_BaseCodeGen):
 
     def generate(self, length=None):
         length = length or EVM_INSTRUCTION.avg  # reasonable default
-        return bytes.fromhex(next(self._generator(length=length,n=self.n, temperature=self.temperature)).replace(" ",""))
+        return bytes.fromhex(next(self._generator(length=length, n=self.n, temperature=self.temperature)).replace(" ",""))
 

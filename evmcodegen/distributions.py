@@ -595,7 +595,8 @@ for cat, instructions in evmdasm.registry.registry.by_category.items():
         if i.fork=="constantinople":  # prio on constantinople
             likelyhood = 0.7
         elif i.name.startswith("PUSH"):
-            likelyhood = 0.01  # reduce likelyhood of additional pushes
+            likelyhood = 0.001  # reduce likelyhood of additional pushes
+            likelyhood_epilog = 0.001  # reduce likelyhood of additional pushes
         EVM_CATEGORY.distribution_prolog[i.opcode] = likelyhood_prolog
         EVM_CATEGORY.distribution[i.opcode] = likelyhood
         EVM_CATEGORY.distribution_epilog[i.opcode] = likelyhood_epilog

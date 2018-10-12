@@ -13,6 +13,8 @@ class DistrCodeGen(_BaseCodeGen):
 
     def __init__(self, distribution):
         super().__init__()
+        self.type = _BaseCodeGen.TYPE_OPCODE_ONLY  # generates opcodes only, operands must be set manually
+
         self.distribution = distribution
 
     def _frandom(self, distribution):

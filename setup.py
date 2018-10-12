@@ -9,7 +9,7 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 
-version = "0.1.0"
+version = "0.1.1"
 name = "evmcodegen"
 
 setup(
@@ -28,6 +28,6 @@ setup(
     long_description=read("README.md") if os.path.isfile("README.md") else "",
     long_description_content_type='text/markdown',
     install_requires=["evmdasm"],
-    #package_data={},
+    package_data={'evmcodegen':['weights/*',]},
     extras_require={'rnn': ['textgenrnn']},
 )

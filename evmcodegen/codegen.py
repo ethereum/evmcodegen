@@ -4,16 +4,13 @@
 """
 Synthetic EVM Bytecode generator
 """
+import time
 import random
 import evmdasm
 from .utils.random import int2bytes
 from .distributions import EVM_BYTE, EVM_INSTRUCTION, EVM_OPCODE_PREVALANCE, EVM_CATEGORY
 
 from .generators.distribution import GaussDistrCodeGen
-try:
-    from .generators.rnn import RnnCodeGen
-except ImportError as ie:
-    print("RnnCodeGen not available: %r"%ie)
 
 
 class Rnd:
@@ -85,6 +82,15 @@ class CodeGen(object):
 
     def __init__(self, instructions=None):
         self.instructions = instructions
+        self._timeit_duration = {}
+        self._timeit_start = {}
+
+    def _timeit(self, name, stop=False):
+        if stop:
+            self._timeit_duration[name] = time.time()-self._timeit_start[name]
+            return self._timeit_duration[name]
+        else:
+            self._timeit_start[name] = time.time()
 
     @property
     def instructions(self):
@@ -132,17 +138,32 @@ class CodeGen(object):
         return instr
 
     def generate(self, generator, length=None, min_gas=0):
+        self._timeit("generate")
         instructions = []
+        total_gas = 0
         # generate instruction
-        while min_gas >= 0:
-            instructions += [evmdasm.registry.create_instruction(opcode=opcode) for opcode in generator.generate(length)]
-            min_gas -= evmdasm.EvmInstructions(instructions).get_gas_required()
+        while True:
+            if generator.type == generator.TYPE_OPCODE_ONLY:
+                instructions += [evmdasm.registry.create_instruction(opcode=opcode) for opcode in generator.generate(length)]
+            elif generator.type == generator.TYPE_OPCODE_WITH_OPERAND:
+                instructions += evmdasm.EvmBytecode(generator.generate(length*3)).disassemble()[:length]  # asume 1:3 opcode:operand ratio
+            else:
+                raise TypeError("invalid generator type: %r" % generator)
+
+            instructions = evmdasm.EvmInstructions(instructions)  #
+
+            if instructions.get_gas_required() >= min_gas and (length is None or len(instructions.assemble().as_bytes) >= length):
+                # exit condition
+                break
 
         self.instructions = instructions  # add or replace?
+        self._timeit("generate", stop=True)
         return self
 
     def fix_stack_arguments(self, valuemap):
+        self._timeit("fix_stack_arguments")
         self.instructions = list(CodeGen.build_stack_layout(instructions=self.instructions, valuemap=valuemap))
+        self._timeit("fix_stack_arguments", stop=True)
         return self
 
     def reassemble(self):
@@ -158,6 +179,7 @@ class CodeGen(object):
         # fix JUMP/JUMPI landing on JUMPDEST
         # reuse existing jumpdestß
         # serialize f
+        self._timeit("fix_jumps")
 
         self.reassemble()  # can only work on disassembled code
 
@@ -182,13 +204,16 @@ class CodeGen(object):
             disassembly.insert(jmp_index, CodeGen.create_push_for_data(jumpdest.address))
 
         self.instructions = disassembly
+        self._timeit("fix_jumps", stop=True)
         return self
 
     def fix_stack_balance(self, balance=0):
+        self._timeit("fix_stack_balance")
         depth = self.instructions.get_stack_balance() + balance
 
         # append pushes or pops to balance the stack
         self.instructions += [evmdasm.registry.create_instruction("PUSH1" if depth <= 0 else "POP") for _ in range(depth)]
+        self._timeit("fix_stack_balance", stop=True)
         return self
 
     def mutate(self, mutator):
@@ -200,7 +225,10 @@ class CodeGen(object):
         out = []
         out.append("========stats==========")
         out.append("instructions: %s" % len(self.instructions))
-        out.append("gas (all instructions: %s" % self.instructions.get_gas_required())
+        out.append("gas (sequentially, all instructions): %s" % self.instructions.get_gas_required())
+        out.append("time taken (total): %0.4fs" % sum(self._timeit_duration.values()))
+        out.append("time detail: %r" % self._timeit_duration)
+        out.append("stack balance: %d" % self.instructions.get_stack_balance())
         from collections import Counter
 
         stats_instructions = Counter([instr.opcode for instr in self.instructions])
@@ -237,12 +265,17 @@ def main():
                       help="instructions per generated code")
     parser.add_option("-s", "--stats", default=False, action="store_true", help="show statistics")
     parser.add_option("-b", "--balance", default=False, action="store_true", help="balance the stack")
+    parser.add_option("-F", "--no-fixups", default=False, action="store_true", help="apply stack args and jumpdest fixups")
     # parse args
     (options, args) = parser.parse_args()
 
     if options.generator == "GaussDistrCategory":
         rnd_codegen = GaussDistrCodeGen(distribution=EVM_CATEGORY)
     elif options.generator == "Rnn":
+        try:
+            from .generators.rnn import RnnCodeGen
+        except ImportError as ie:
+            print("RnnCodeGen not available: %r" % ie)
         rnd_codegen = RnnCodeGen()
         # rnd_codegen.temperature = 0.2
     else:
@@ -252,9 +285,10 @@ def main():
 
     while options.count >0:
         evmcode = CodeGen()\
-            .generate(generator=rnd_codegen, length=options.length, min_gas=options.min_gas)\
-            .fix_stack_arguments(valuemap=VALUEMAP)\
-            .fix_jumps()
+            .generate(generator=rnd_codegen, length=options.length, min_gas=options.min_gas)
+        if not options.no_fixups:
+            evmcode.fix_stack_arguments(valuemap=VALUEMAP)\
+                .fix_jumps()
         if options.balance:
             evmcode.fix_stack_balance()
         print("0x%s" % evmcode.assemble().as_hexstring)
