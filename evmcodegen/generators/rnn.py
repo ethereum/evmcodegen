@@ -8,13 +8,14 @@ import os
 import pkg_resources
 from textgenrnn import textgenrnn
 from .distribution import _BaseCodeGen
+from ..distributions import EVM_INSTRUCTION
 
 class RnnCodeGen(_BaseCodeGen):
 
     def __init__(self, weights_path=None, vocab_path=None, config_path=None):
         super().__init__()
 
-        pkg_root = pkg_resources.resource_filename(__name__, os.path.join("weights"))
+        pkg_root = pkg_resources.resource_filename(__name__, os.path.join("..", "weights"))
 
         weights_path = weights_path or os.path.join(pkg_root, "rnn_ethcontract_weights.hdf5")
         vocab_path = vocab_path or os.path.join(pkg_root, "rnn_ethcontract_vocab.json")
@@ -38,8 +39,6 @@ class RnnCodeGen(_BaseCodeGen):
                 yield code
 
     def generate(self, length=None):
-        return self._generator.next()
-
-
-
+        length = length or EVM_INSTRUCTION.avg  # reasonable default
+        return bytes.fromhex(next(self._generator(length=length,n=self.n, temperature=self.temperature)).replace(" ",""))
 

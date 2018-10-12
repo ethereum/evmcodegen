@@ -4,13 +4,11 @@
 """
 Synthetic EVM Bytecode generator
 """
-import binascii
 import random
 import evmdasm
-from .utils.random import random_gauss, WeightedRandomizer, bytes_to_hexstr, int2bytes
+from .utils.random import int2bytes
 from .distributions import EVM_BYTE, EVM_INSTRUCTION, EVM_OPCODE_PREVALANCE, EVM_CATEGORY
 
-from .generators.base import _BaseCodeGen
 from .generators.distribution import GaussDistrCodeGen
 try:
     from .generators.rnn import RnnCodeGen
@@ -237,7 +235,7 @@ def main():
     parser.add_option("-m", "--min-gas", default=0, type=int, help="generate instructions consuming at least this amount of gas")
     parser.add_option("-l", "--length", default=-1, type=int,
                       help="instructions per generated code")
-    parser.add_option("-s", "--stats", default=True, action="store_true", help="show statistics")
+    parser.add_option("-s", "--stats", default=False, action="store_true", help="show statistics")
     parser.add_option("-b", "--balance", default=False, action="store_true", help="balance the stack")
     # parse args
     (options, args) = parser.parse_args()
