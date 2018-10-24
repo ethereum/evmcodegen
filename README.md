@@ -14,7 +14,6 @@ from evmcodegen.distributions import EVM_CATEGORY
 from evmcodegen.generators.distribution import GaussDistrCodeGen
 
 # prepare random number generators for stack arg generator
-import evmdasm
 
 # Rnd is just a utility class providing random byte and number generators. see codegen.py
 VALUEMAP ={
