@@ -12,6 +12,8 @@ import evmdasm
 # import distribution and random codegen strategy
 from evmcodegen.distributions import EVM_CATEGORY
 from evmcodegen.generators.distribution import GaussDistrCodeGen
+# import main codegen class
+from evmcodegen.codegen import CodeGen
 
 # prepare random number generators for stack arg generator
 
