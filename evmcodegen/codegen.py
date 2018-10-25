@@ -85,6 +85,8 @@ class CodeGen(object):
         self._timeit_duration = {}
         self._timeit_start = {}
 
+        self._addresses_seen = set([])
+
     def _timeit(self, name, stop=False):
         if stop:
             self._timeit_duration[name] = time.time()-self._timeit_start[name]
@@ -108,8 +110,7 @@ class CodeGen(object):
             raise TypeError("invalid type for instructions. evmdasm.EvmInstructions or [] expected")
         return self
 
-    @staticmethod
-    def build_stack_layout(instructions, valuemap):
+    def build_stack_layout(self, instructions, valuemap):
         for instr in instructions:
             if instr.name.startswith("PUSH"):
                 Rnd.randomize_operand(instr)  # push random stuff
@@ -124,7 +125,10 @@ class CodeGen(object):
                 for arg in reversed(instr.args):
                     f = valuemap.get(arg.__class__)
                     if f:
-                        yield CodeGen.create_push_for_data(f())
+                        v = f()
+                        if arg.__class__ == evmdasm.argtypes.Address:
+                            self._addresses_seen.add(v)
+                        yield CodeGen.create_push_for_data(v)
             yield instr
 
     @staticmethod
@@ -162,7 +166,7 @@ class CodeGen(object):
 
     def fix_stack_arguments(self, valuemap):
         self._timeit("fix_stack_arguments")
-        self.instructions = list(CodeGen.build_stack_layout(instructions=self.instructions, valuemap=valuemap))
+        self.instructions = list(self.build_stack_layout(instructions=self.instructions, valuemap=valuemap))
         self._timeit("fix_stack_arguments", stop=True)
         return self
 
@@ -180,7 +184,6 @@ class CodeGen(object):
         # reuse existing jumpdestß
         # serialize f
         self._timeit("fix_jumps")
-
         self.reassemble()  # can only work on disassembled code
 
         # strategy: add random jumpdests and make jump/jumpis point to jumpdest
@@ -193,6 +196,11 @@ class CodeGen(object):
             jmpdest = evmdasm.registry.create_instruction("JUMPDEST")
             disassembly.insert(rnd_position, jmpdest)  # insert fixes addresses
             jumpdests.append(jmpdest)
+
+        # disassembly instructions do not automatically update their addresses for performance reasons.
+        #  read access to EvmInstructions forces an address fixup. but this can also be called manually (it will bail early if there is nothing to fix)
+        #  for convenience - disassembly.index(..) also recalculates addresses.
+        disassembly._update_instruction_addresses()
 
         # fix the stack to make the code jump to the jumpdest
         for jump in jumps:
